@@ -26,13 +26,9 @@ VolumeEntropy := proc(R)
     
     # USES: CheckRelations,CyclicOrdering,MinimalBigons,KneadingMatrix procedures
     local co,bigons,i,A:
-    
-    if CheckRelations(R)=false then
-    
+    if CheckRelations(R)=false then    
        print(‘The relations do not satisfy the syntax conventions‘): return:
-       
-    end if:
-    
+    end if:    
     co:=CyclicOrdering(R):
     if co=false then print(‘The presentation is not geometric‘): return: end if:
     bigons:=MinimalBigons(R,co):
