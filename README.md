@@ -18,7 +18,6 @@ Ergodic Theory and Dynamical Systems, 2025.
 Next we show the code of the main program, as a summary and description of the algorithm
 
 VolumeEntropy := proc(R)
-
     # Computes the volume entropy of the presentation R if R is geometric
     
     # or reports that R is not geometric otherwise
