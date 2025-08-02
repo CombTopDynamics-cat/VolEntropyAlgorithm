@@ -18,8 +18,7 @@ Ergodic Theory and Dynamical Systems, 2025.
 Next we show the code of the main program, as a summary and description of the algorithm
 
 VolumeEntropy := proc(R)\
-    # Computes the volume entropy of the presentation R if R is geometric   
-    # or reports that R is not geometric otherwise    
+    # Computes the volume entropy of the presentation R if R is geometric or else reports that R is not geometric
     # USES: LinearAlgebra library    
     # USES: CheckRelations,CyclicOrdering,MinimalBigons,KneadingMatrix procedures
     
@@ -33,4 +32,5 @@ VolumeEntropy := proc(R)\
     A:=KneadingMatrix(co,bigons,R):
     i:=Determinant(DeleteColumn(A,1)):
     return 1/min(fsolve(i,t=0..1));
+    
 end proc:
