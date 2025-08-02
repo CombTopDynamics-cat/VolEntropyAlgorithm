@@ -1,0 +1,378 @@
+ restart:
+ with(ListTools): with(LinearAlgebra):
+ CheckRelations := proc(R)
+   # Performs basic syntax checkings about the list of relations R:
+   # R must be a list of lists (relations), each relation with length >2
+   # The set of absolute values of all elements of all lists in R must be {1,2,...,n} for some n>2
+   # (1,...,n are interpreted as generators and -1,...,-n as their inverses)
+   # A set of 2 relations with n=3 is excluded since it does not correspond to a hyperbolic group
+   # Returns true if the previous conditions are satisfied, false otherwise
+   # USES: ListTools library 
+   local i,j,k,absR,n:
+   if not type(R,list) then return false: end if:
+   i:=nops(R):
+   for j from 1 to i do if not type(R[j],list) then return false: end if: end do:
+   for j from 1 to i do if nops(R[j])<3 then return false: end if: end do:
+   absR:=[]: # concatenate all lists in R in a single list (with the abs value of the elements)
+   for j from 1 to i do
+     for k from 1 to nops(R[j]) do
+       if not type(R[j][k],integer) then return false: else absR:=[op(absR),abs(R[j][k])]: end if: 
+     end do:
+   end do:
+   n:=max(op(absR)):
+   if n<3 then return false: end if:
+   for j from 1 to n do if Search(j,absR)=0 then return false: end if: od:
+   if n=3 and nops(R)=2 then return false: end if:
+   return true:
+ end proc:
+ 
+ forw := proc(k,s)
+   # s is a list
+   # Returns s[k+1] if 1<=k<nops(s), s[1] if k=nops(s), false otherwise 
+   if 1<=k and k<nops(s) then return s[k+1] else if k=nops(s) then return s[1] else return false: end if: end if: 
+ end proc:
+ 
+ backw := proc(k,s)
+   # s is a list
+   # Returns s[k-1] if 1<k<=nops(s), s[nops(s)] if k=1, false otherwise 
+   if 1<k and k<=nops(s) then return s[k-1] else if k=1 then return s[nops(s)] else return false: end if: end if: 
+ end proc:
+ 
+ CyclicOrdering := proc(R)
+   # R is a list of relations satisfying the syntax conditions tested in CheckRelations.
+   # We check that the multiset of absolute values of all elements of all lists in R is {1,1,2,2,...,n,n} for some n>2
+   # If not, R is not a geometric presentation and we return false
+   # Otherwise, we return the list of 2n generators and their inverses (starting by generator 1) in the clockwise cyclic ordering
+   # If we fail in finding it, the presentation is not geometric and we return false.
+   # USES: ListTools library, procedures "forw", "backw"
+   local co,ok,i,j,k,R_angle,a,pos,position,absR,n:
+   absR:=[]: # concatenate all lists in R in a single list (with the abs value of the elements)
+   i:=nops(R):
+   for j from 1 to i do
+     for k from 1 to nops(R[j]) do absR:=[op(absR),abs(R[j][k])]: end do: 
+   end do:
+   n:=max(op(absR)):  
+   for j from 1 to n do if Occurrences(j,absR)<>2 then return false: end if: end do:
+   R_angle:=R:
+   for i from 1 to nops(R_angle) do for j from 1 to nops(R_angle[i]) do R_angle[i][j]:=0: od: od:
+   # R_angle is now a list of lists with the same dimensions as R, with all elements equal to 0
+   co:=[]: # the list that will contain the cyclic ordering
+   # We fill co step by step, adding if possible a new generator at each step
+   a:=1: # a=generator candidate to add; we start arbitrarily with generator 1 
+   ok:=true:
+   for i from 1 to 2*n while ok do
+     ok:=false:
+     for j from 1 to nops(R) while not ok do
+       if Occurrences(a,R[j])=0 then next: end if:
+       position:=[SearchAll(a,R[j])]:
+       for k from 1 to nops(position) while not ok do
+         if R_angle[j][position[k]]=0 then 
+           if Occurrences(a,co)<>0 then return false: else R_angle[j][position[k]]:=1: co:=[op(co),a]: a:=-backw(position[k],R[j]): ok:=true: end if:
+         end if:
+       od:
+     od:
+    # exploring the inverse relations:
+    for j from 1 to nops(R) while not ok do
+       if Occurrences(-a,R[j])=0 then next: end if:
+       position:=[SearchAll(-a,R[j])]:
+       for k from 1 to nops(position) while not ok do
+         pos:=position[k]+1: if pos>nops(R[j]) then pos:=1: end if:
+         if R_angle[j][pos]=0 then 
+           if Occurrences(a,co)<>0 then return false: else R_angle[j][pos]:=1: co:=[op(co),a]: a:=forw(position[k],R[j]): ok:=true: end if:
+         end if:
+       od:
+     od:
+   od: 
+   if ok then return co: else return false: end if:
+ end proc:
+ 
+ MinimalBigons := proc(R,co)
+   # R is a list of relations corresponding to a geometric presentation
+   # co is the associated cyclic ordering computed by CyclicOrdering
+   # Computes the minimal bigons associated to the cyclic ordering co
+   # Returns "bigon", a list of lists where bigon[i] is a list starting by generator co[i] and containing the corresponding clockwise minimal bigon
+   # USES: ListTools library, "forw" procedure
+   # Local procedures: "shiftfrompos", "concat" 
+   local n,rels,i,j,k,inverseR,shiftfrompos,concat,a,bigon:  
+   
+   shiftfrompos := proc(i,s)
+     # Shifts list s cyclically starting from position i
+     local j,ss:
+     ss:=[]:
+     for j from i to nops(s) do ss:=[op(ss),s[j]]: od:
+     for j from 1 to i-1 do ss:=[op(ss),s[j]]: od:
+     return ss:
+   end proc:
+   
+   concat := proc(A,B)
+     # A,B are nonempty lists of integers
+     # A has odd length 2k+1
+     # Returns the concatenation of:
+     # the first k elements of A 
+     # followed by all elements of B except the first one
+     # followed by the last k elements of A
+     local i,j,k,s: 
+     k:=(nops(A)-1)/2:
+     s:=[seq(A[i],i=1..k)]:
+     for i from 2 to nops(B) do s:=[op(s),B[i]]: od:
+     for i from k+2 to nops(A) do s:=[op(s),A[i]]: od:
+     return s:
+   end proc:
+ 
+   n:=nops(co)/2:
+   # We find, for each generator x in co, the two possible relations (starting at x) that could be minimal clockwise closed paths in the Cayley graph
+   # rels[i] will be the list of such two relations starting at generator co[i].
+   for i from 1 to 2*n do
+     rels[i]:=[]:
+     for j from 1 to nops(R) do
+       for k from 1 to nops(R[j]) do if R[j][k]=co[i] then rels[i]:=[op(rels[i]),shiftfrompos(k,R[j])]: end if: od:
+       inverseR:=-Reverse(R[j]):
+       for k from 1 to nops(inverseR) do if inverseR[k]=co[i] then rels[i]:=[op(rels[i]),shiftfrompos(k,inverseR)]: end if: od:
+     od:
+   od:
+   # We find first the minimal clockwise closed paths of the Cayley graph adjacent to the identity
+   # (such paths with even length are minimal bigons, the remaining ones have to be completed)
+   a:=1:
+   for i from 1 to 2*n do
+     j:=Search(a,co):
+     if -rels[j][1][nops(rels[j][1])]=forw(i,co) then bigon[i]:=rels[j][1]: else bigon[i]:=rels[j][2]: end if:
+     a:=-bigon[i][nops(bigon[i])]:
+   od:
+   convert(bigon,list):  
+   # Now we must complete the odd length closed paths to get the (even length) minimal bigons
+   for i from 1 to 2*n do
+     while nops(bigon[i]) mod 2=1 do
+     # we have to concatenate the closed path of lenght 2k+1 with another relation r starting with -element k+1 of the closed path,
+     # with the property that the last element of r is not -element k+2 
+     # (otherwise the concatenation would give a subword of the form [a,-a], not geodesic)      
+     k:=(nops(bigon[i])-1)/2:
+     j:=Search(-bigon[i][k+1],co):
+     if rels[j][1][nops(rels[j][1])]<>-bigon[i][k+2] then bigon[i]:=concat(bigon[i],rels[j][1]): else bigon[i]:=concat(bigon[i],rels[j][2]): end if:
+     od:
+   od:
+   convert(bigon,list): 
+   return bigon: 
+ end proc: 
+ 
+ 
+ KneadingMatrix := proc(co,bigon,R)
+   # Computes the kneading matrix associated to the cyclic ordering co and the list bigon of minimal bigons
+   # co = list of the 2n generators and their inverses in the cyclic ordering
+   # note: co[1]=1 by convention
+   # bigon[i]=the minimal clockwise bigon starting by generator co[i]
+   # USES: LinearAlgebra,ListTools libraries, "forw" procedure
+   # Local procedures: "BelongsLength3", "imageleftend", "imagerightend", "either1or2", "oppo", "crosses"
+   local i,j,k,n,crosses,intervals,specials,imageleftend,imagerightend,either1or2,A,BelongsLength3,orientation,cut,current,
+   splitting,oppo,monor,monol,signR,signL,right,left,big,N,f,side:
+     
+   # Determining, for each neighbor v of the identity, whether the cyclic ordering based at v is either co or the reverse of co
+   # (in other words, wheter the B-S-like map is orientation preserving or reversing). Preserving = 1, Reversing = -1.
+   # Warning!! If the angle belongs to a relation of length 3, this is a special case!
+   n:=nops(co)/2:
+   orientation:=[seq(i,i=1..2*n)]:
+   
+   BelongsLength3 := proc(a,b,R)
+     # Checks whether the word ab belongs to a relation (or inverse relation) W of lenght 3.
+     # In the affirmative, returns the next symbol in W. Otherwise returns false.
+     local i,k,ok:
+     ok:=false: 
+     for i from 1 to nops(R) while not ok do
+       if nops(R[i])<>3 then next: end if:
+       if R[i][1]=a and R[i][2]=b then ok:=true: k:=R[i][3]: end if:
+       if R[i][2]=a and R[i][3]=b then ok:=true: k:=R[i][1]: end if:
+       if R[i][3]=a and R[i][1]=b then ok:=true: k:=R[i][2]: end if:
+     od:
+     for i from 1 to nops(R) while not ok do
+       if nops(R[i])<>3 then next: end if:
+       if R[i][1]=-b and R[i][2]=-a then ok:=true: k:=-R[i][3]: end if:
+       if R[i][2]=-b and R[i][3]=-a then ok:=true: k:=-R[i][1]: end if:
+       if R[i][3]=-b and R[i][1]=-a then ok:=true: k:=-R[i][2]: end if:
+     od:
+     if ok then return k: else return false: end if:  
+   end proc:
+ 
+   for i from 1 to 2*n do
+     j:=BelongsLength3(bigon[i][nops(bigon[i])],bigon[i][1],R):
+     if j=false then j:=-co[i]: end if:
+     if forw(Search(bigon[i][2],co),co)=j then orientation[i]:=1: else orientation[i]:=-1: end if:
+   od:
+ 
+   # Computing the sequence of intervals in S1. 
+   # Given an interval x, if connecting monotonically the images of the left and right ends of x makes 
+   # the map crossing the rigthmost end of S1, then the interval Ix splits into two subintervals Ix1,Ix2.
+   # We keep the non splitted intervals in the set "specials".
+    
+   crosses := proc(a,b,co,mono)
+     # a and b are respectively the images of the left and right ends of an interval I
+     # co contains the generators in the cyclic ordering (so, the ordered list of intervals from left to right)
+     # mono=1 if the map is increasing on I, mono=-1 otherwise
+     # Returns true if the image of the map crosses the leftmost point of S1.
+     local cyc:
+     if a=co[1] then if mono=1 then return false: else return true: end if: end if:
+     if a=co[nops(co)] then if mono=1 then return true: else return false: end if: end if:
+     if b=co[1] then if mono=1 then return true: else return false: end if: end if:
+     if b=co[nops(co)] then if mono=1 then return false: else return true: end if: end if: 
+     if mono=-1 then cyc:=Reverse(co): else cyc:=co: end if:
+     if Search(a,cyc)<Search(b,cyc) then return false: else return true: end if:
+   end proc:
+ 
+   # Given an interval (or generator) x: 
+   # * the right image of the left end of x is the inverse of the pre-last symbol of the minimal bigon of the generator previous to x in the cyclic ordering. 
+   # * the left image of the right end of x is the next symbol to x in the minimal bigon of x.
+   imageleftend := proc(x,co,bigon)
+     local i:
+     i:=Search(x,co)-1:
+     if i=0 then i:=nops(co): end if:
+     return -bigon[i][nops(bigon[i])-1]: 
+   end proc:
+   imagerightend := proc(x,co,bigon)
+     local i:
+     i:=Search(x,co):
+     return bigon[i][2]: # by construction of the minimal bigons, bigon[i][1]=x
+   end proc:
+ 
+   intervals:=[]:
+   specials:={}: 
+   for i from 1 to 2*n do
+     if not crosses(imageleftend(co[i],co,bigon),imagerightend(co[i],co,bigon),co,orientation[i]) then intervals:=[op(intervals),[co[i],0]]: specials:=specials union {co[i]}: 
+       else intervals:=[op(intervals),[co[i],1],[co[i],2]]:
+     end if:
+   od:
+ 
+   k:=nops(intervals): 
+   A:=Matrix(k-1,k):
+   for i from 1 to k-1 do for j from 1 to k do A[i,j]:=0: od: od:
+   for i from 1 to k-1 do A[i,i]:=-1: A[i,i+1]:=1: od:
+   
+   either1or2 := proc(x,y,mono,co,bigon)
+     # Parameters: an interval (or generator) x, an interval (or generator) y f-covered by x, 
+     # and "mono", a variable equal to 1 if f is increasing in x or -1 if it is drecreasing. 
+     # Returns "1" if x is an splitting interval and its left part covers y,
+     # "2" if x is an splitting interval and its right part covers y,
+     # or "0" if x is not a splitting interval.
+     if not crosses(imageleftend(x,co,bigon),imagerightend(x,co,bigon),co,mono) then return 0: end if:
+     # now we know that the interval x splits
+     if mono=1 then
+       if Search(imageleftend(x,co,bigon),co)<=Search(y,co) then return 1: else return 2: end if:
+     else
+       if Search(imageleftend(x,co,bigon),co)>=Search(y,co) then return 1: else return 2: end if:
+     end if:
+   end proc:
+ 
+   oppo := proc(a,co)
+     # returns the generator opposite to the generator a in the cyclic ordering co
+     local i,n:
+     n:=nops(co)/2:
+     i:=Search(a,co):
+     if i<=n then return co[i+n]: else return co[i-n]: end if: 
+   end proc:
+ 
+   # Now we choose, for all i=1..2*n (2*n=number of bigons), the generator that continues the i-th bigon
+   # in the infinite geodesic ray defining the i-th cutting point. By definition, we choose this
+   # generator to be the opposite to the last symbol of the left side of the bigon. 
+    
+   cut:=[]:
+   for i from 1 to 2*n do N:=nops(bigon[i])/2: cut:=[op(cut),oppo(-bigon[i][N],co)]: od:
+   
+   # We compute the itineraries of the vertices (rows 1 to k-1 in the matrix A)
+   # Splitting is a boolean variable that says whether or not we are placed in a splitting vertex. 
+   # Recall that at the beginning we discard the leftmost end of the first interval (initial point of S1). 
+   # "Current" keeps the interval (generator) where we are placed. 
+   # The right image of a generator x is the previous to -x in the minimal bigon of the generator previous to x in co. 
+   # The left image of a generator x is the next to x in the minimal bigon of x.
+   # So, there is eventual coincidence of the left and right orbits in N iterates, where N is half of the length of the minimal bigon of the generator previous to x in co.
+ 
+   current:=co[1]: if not current in specials then splitting:=true: else splitting:=false: end if:
+   for i from 1 to k-1 do
+   signL:=1: signR:=1: 
+   if splitting then
+     A[i,1]:=A[i,1]+signR*t: A[i,k]:=A[i,k]-signL*t:
+     right:=co[1]: left:=co[2*n]:
+     big:=bigon[2*n]:
+     N:=nops(big)/2:
+     for j from 2 to N-1 do
+       signR:=signR*orientation[Search(right,co)]:
+       signL:=signL*orientation[Search(left,co)]:
+       #right image:      
+       right:=-big[2*N-j+1]:
+       f:=-big[2*N-j]:  
+       side:=either1or2(right,f,orientation[Search(right,co)],co,bigon):
+       A[i,Search([right,side],intervals)]:=A[i,Search([right,side],intervals)]+signR*t^j:
+       #left image:      
+       left:=big[j]:
+       f:=big[j+1]:
+       side:=either1or2(left,f,orientation[Search(left,co)],co,bigon):
+       A[i,Search([left,side],intervals)]:=A[i,Search([left,side],intervals)]-signL*t^j:
+     od:
+     # finally, the last iterate;    
+     signR:=signR*orientation[Search(right,co)]:
+     signL:=signL*orientation[Search(left,co)]:
+     right:=-bigon[2*n][N+1]:
+     left:=bigon[2*n][N]:
+     monor:=orientation[Search(right,co)]:
+     monol:=orientation[Search(left,co)]:
+     # The generator previously chosen to be covered by both the left and right generators was cut[2*n]. 
+     side:=either1or2(right,cut[2*n],monor,co,bigon):
+     A[i,Search([right,side],intervals)]:=A[i,Search([right,side],intervals)]+signR*t^N:
+     side:=either1or2(left,cut[2*n],monol,co,bigon):
+     A[i,Search([left,side],intervals)]:=A[i,Search([left,side],intervals)]-signL*t^N: 
+     splitting:=false:
+   
+     else
+   
+     big:=Search(current,co): 
+     N:=nops(bigon[big])/2:
+     right:=-bigon[big][2*N]:
+     left:=bigon[big][1]: 
+     for j from 2 to N-1 do
+       signR:=signR*orientation[Search(right,co)]:
+       signL:=signL*orientation[Search(left,co)]:
+       #right image:
+       right:=-bigon[big][2*N-j+1]:
+       f:=-bigon[big][2*N-j]:  
+       side:=either1or2(right,f,orientation[Search(right,co)],co,bigon):
+       A[i,Search([right,side],intervals)]:=A[i,Search([right,side],intervals)]+signR*t^(j-1):
+       #left image:
+       left:=bigon[big][j]:
+       f:=bigon[big][j+1]:
+       side:=either1or2(left,f,orientation[Search(left,co)],co,bigon):
+       A[i,Search([left,side],intervals)]:=A[i,Search([left,side],intervals)]-signL*t^(j-1):
+     od:
+     # and the last iterate:
+     signR:=signR*orientation[Search(right,co)]:
+     signL:=signL*orientation[Search(left,co)]:
+     right:=-bigon[big][N+1]:
+     left:=bigon[big][N]:
+     monor:=orientation[Search(right,co)]:
+     monol:=orientation[Search(left,co)]:
+     # The generator previously chosen to be covered by both the left and right generators was cut[big].
+     side:=either1or2(right,cut[big],monor,co,bigon):
+     A[i,Search([right,side],intervals)]:=A[i,Search([right,side],intervals)]+signR*t^(N-1):
+     side:=either1or2(left,cut[big],monol,co,bigon):
+     A[i,Search([left,side],intervals)]:=A[i,Search([left,side],intervals)]-signL*t^(N-1): 
+     
+     current:=forw(Search(current,co),co): if not current in specials then splitting:=true: end if:
+   end if:
+ od:
+ return A:
+ end proc:
+ 
+ 
+ VolumeEntropy := proc(R)
+   # Computes the volume entropy of the presentation R if R is geometric
+   # or reports that R is not geometric otherwise
+   # USES: LinearAlgebra library, "CheckRelations","CyclicOrdering","MinimalBigons","KneadingMatrix" procedures
+   local co,n,bigons,i,A:
+   if CheckRelations(R)=false then print(`The relations do not satisfy the conventions`): return: end if:
+   co:=CyclicOrdering(R):
+   if co=false then print(`The presentation is not geometric`); return: end if:
+   n:=nops(co)/2; 
+   bigons:=MinimalBigons(R,co):
+   A:=KneadingMatrix(co,bigons,R):
+   i:=simplify(sort(factor(Determinant(DeleteColumn(A,1)))));
+   print(`Kneading determinant`,i);
+   i:=fsolve(i,t=0..1):
+   print(`Volume entropy`,1/min(i));
+ end proc:
+ 
+ 
