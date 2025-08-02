@@ -25,7 +25,6 @@ VolumeEntropy := proc(R)
     # USES: LinearAlgebra library
     
     # USES: CheckRelations,CyclicOrdering,MinimalBigons,KneadingMatrix procedures
-    
     local co,bigons,i,A:
     
     if CheckRelations(R)=false then
